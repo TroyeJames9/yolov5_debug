@@ -216,32 +216,59 @@ def run(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
+    # 选择使用的模型pt文件路径
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model path or triton URL')
+    # 选择使用的检测对象
     parser.add_argument('--source', type=str, default=ROOT / 'data/images', help='file/dir/URL/glob/screen/0(webcam)')
+    # 需要检测的对象类别，比如人、公交车、帽子，默认是coco128.yaml
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
+    # 输入模型预处理后的图片大小，会根据这个参数对导入的图片进行预处理
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
+    # 置信度阈值，也就是识别框的数值
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
+    # IOU阈值，数值越低，识别框越少
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
+    # 每张图像的最大识别框数
     parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
+    # 可取的值有cpu、0、'0,1,2'。数字就意味着GPU，一般保持默认，它会自动尝试调用可用的GPU，最后再尝试CPU
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    # 是否展示预测之后的图片/视频，默认为False
     parser.add_argument('--view-img', action='store_true', help='show results')
+    # 是否将预测的框坐标以txt文件保存，默认为False
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
+    # 是否保存每个框的置信度到txt文件
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
+    # 是否保存裁剪后的预测框（不太懂）
     parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes')
+    # 是否保存结果图片与视频
     parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
+    # 过滤出来只识别的对象类别，需要去查看data参数对应的yaml文件，来确定类别序号再填入参数值
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --classes 0, or --classes 0 2 3')
+    # 当任务不需要在 NMS 步骤期间区分不同的对象类时，将 agnostic 设置为 True 可能很有用。
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
+    # 推理的时候是否进行多尺度、翻转等增强数据集推理的操作（有可能过拟合）
     parser.add_argument('--augment', action='store_true', help='augmented inference')
+    # 是否保存推理过程的可视化图片（很多）
     parser.add_argument('--visualize', action='store_true', help='visualize features')
+    # 控制是否更新了模型，如果修改过源代码，则需要将这个设为True
     parser.add_argument('--update', action='store_true', help='update all models')
+    # 设置结果视频或图片存放的根路径
     parser.add_argument('--project', default=ROOT / 'runs/detect', help='save results to project/name')
+    # 设置存放本次结果的文件夹名称
     parser.add_argument('--name', default='exp', help='save results to project/name')
+    # 是否覆盖上一次已创建的文件夹，不再新增新的文件夹存储结果
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
+    # 识别框的宽度，没啥用
     parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')
+    # 是否隐藏识别框的类别标签
     parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')
+    # 是否隐藏识别框的置信度
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
+    # 是否使用半精度推理，可缩短推理时间
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
+    # use OpenCV DNN for ONNX inference，不清楚
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    # 抽帧步长，默认为1就说明每帧都抽，为2就是每2帧抽一帧
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
