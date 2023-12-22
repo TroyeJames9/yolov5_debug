@@ -1,8 +1,30 @@
 import os
-import sys
-from pathlib import Path
+import re
 from pycocotools.coco import COCO
 import requests
+
+
+def normalize_path(path):
+    # 将正斜杠替换为反斜杠
+    path = path.replace('/', '\\')
+    # 将连续两个反斜杠替换为一个反斜杠
+    path = re.sub(r'\\\\', r'\\', path)
+    return path
+
+
+def check_and_create_path(abs_path):
+    # 判断路径是否存在
+    if not os.path.exists(abs_path):
+        # 递归创建路径
+        os.makedirs(abs_path)
+        print(f"Path '{abs_path}' created.")
+    else:
+        print(f"Path '{abs_path}' already exists.")
+
+
+def has_files_in_path(path):
+    # 使用 os.scandir 检查路径是否包含文件
+    return any(entry.is_file() for entry in os.scandir(path))
 
 
 def find_project_root(current_dir=None, marker_file=".gitignore"):
@@ -46,6 +68,7 @@ def set_relative_path(relative_path):
     if project_root is not None:
         # Combine the project root and the relative path
         absolute_path = os.path.join(project_root, relative_path)
+        # absolute_path = normalize_path(absolute_path)
         return absolute_path
     else:
         raise RuntimeError("Project root not found.")
@@ -55,23 +78,29 @@ def get_coco_subset(
         coco_json_dir: str,
         coco_json_name: str,
         classes: list,
-        # output_dir: str
+        output_dir: str
 ):
     # instantiate COCO specifying the annotations json path
     json_relative_path = coco_json_dir + '/' + coco_json_name
     json_path = set_relative_path(json_relative_path)
+    output_path = set_relative_path(output_dir)
+    check_and_create_path(output_path)
     coco = COCO(json_path)
+
     # Specify a list of category names of interest
     catIds = coco.getCatIds(catNms=classes)
+
     # Get the corresponding image ids and images using loadImgs
     imgIds = coco.getImgIds(catIds=catIds)
     images = coco.loadImgs(imgIds)
 
     # Save the images into a local folder
-    # for im in images:
-    #     img_data = requests.get(im['coco_url']).content
-    #     with open(output_dir + im['file_name'], 'wb') as handler:
-    #         handler.write(img_data)
+    if not has_files_in_path(output_path):
+        for im in images:
+            img_data = requests.get(im['coco_url']).content
+            output_file_path = os.path.join(output_path, im['file_name'])
+            with open(output_file_path, 'wb') as handler:
+                handler.write(img_data)
 
     return imgIds
 
@@ -80,6 +109,6 @@ if __name__ == "__main__":
     get_coco_subset(
         coco_json_dir='data/json',
         coco_json_name='instances_train2017.json',
-        classes=['person']
-        # output_dir='dataset/coco/image/train'
+        classes=['person'],
+        output_dir='dataset/coco/image/train'
     )
