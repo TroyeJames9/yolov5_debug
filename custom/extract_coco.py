@@ -1,30 +1,9 @@
 import os
 import re
 from pycocotools.coco import COCO
+import fiftyone.zoo as foz
+import fiftyone as fo
 import requests
-
-
-def normalize_path(path):
-    # 将正斜杠替换为反斜杠
-    path = path.replace('/', '\\')
-    # 将连续两个反斜杠替换为一个反斜杠
-    path = re.sub(r'\\\\', r'\\', path)
-    return path
-
-
-def check_and_create_path(abs_path):
-    # 判断路径是否存在
-    if not os.path.exists(abs_path):
-        # 递归创建路径
-        os.makedirs(abs_path)
-        print(f"Path '{abs_path}' created.")
-    else:
-        print(f"Path '{abs_path}' already exists.")
-
-
-def has_files_in_path(path):
-    # 使用 os.scandir 检查路径是否包含文件
-    return any(entry.is_file() for entry in os.scandir(path))
 
 
 def find_project_root(current_dir=None, marker_file=".gitignore"):
@@ -74,7 +53,30 @@ def set_relative_path(relative_path):
         raise RuntimeError("Project root not found.")
 
 
-def get_coco_subset(
+def normalize_path(path):
+    # 将正斜杠替换为反斜杠
+    path = path.replace('/', '\\')
+    # 将连续两个反斜杠替换为一个反斜杠
+    path = re.sub(r'\\\\', r'\\', path)
+    return path
+
+
+def check_and_create_path(abs_path):
+    # 判断路径是否存在
+    if not os.path.exists(abs_path):
+        # 递归创建路径
+        os.makedirs(abs_path)
+        print(f"Path '{abs_path}' created.")
+    else:
+        print(f"Path '{abs_path}' already exists.")
+
+
+def has_files_in_path(path):
+    # 使用 os.scandir 检查路径是否包含文件
+    return any(entry.is_file() for entry in os.scandir(path))
+
+
+def get_coco_subset_v1(
         coco_json_dir: str,
         coco_json_name: str,
         classes: list,
@@ -105,10 +107,32 @@ def get_coco_subset(
     return imgIds
 
 
-if __name__ == "__main__":
-    get_coco_subset(
-        coco_json_dir='data/json',
-        coco_json_name='instances_train2017.json',
-        classes=['person'],
-        output_dir='dataset/coco/image/train'
+def get_coco_subset_v2(
+        coco_name='coco-2017',
+        dataset_dir='dataset/coco-2017',
+        splits=None,
+        classes=None,
+        max_samples=None,
+        only_matching=True,
+
+):
+    dataset_path = set_relative_path(dataset_dir)
+    check_and_create_path(dataset_path)
+    dataset = foz.load_zoo_dataset(
+        coco_name,
+        splits=splits,
+        classes=classes,
+        only_matching=only_matching,
+        max_samples=max_samples,
+        dataset_dir=dataset_path
     )
+
+
+if __name__ == "__main__":
+    # imgids= get_coco_subset(
+    #     coco_json_dir='data/json',
+    #     coco_json_name='instances_train2017.json',
+    #     classes=['person'],
+    #     output_dir='dataset/coco/image/train'
+    # )
+    get_coco_subset_v2(classes='person', splits=['train', 'validation'])
