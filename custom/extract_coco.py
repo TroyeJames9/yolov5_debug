@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import requests
 import shutil
@@ -12,26 +11,24 @@ def findProjectRoot(current_dir=None, marker_file=".gitignore"):
     """
     Find the project root directory based on the presence of a marker file.
 
-    :param current_dir: The starting directory for the search. If not provided, the current working directory is used.
-    :param marker_file: The name of the marker file that indicates the project root.
-    :return: The absolute path to the project root directory, or None if not found.
+    Args:
+        current_dir(str): The starting directory for the search.
+        If not provided,the current working directory is used.
+        marker_file(str): The name of the marker file that indicates the project root.
+
+    Returns:
+        current_dir(str): The absolute path to the project root directory, or None if not found.
     """
     if current_dir is None:
         current_dir = os.getcwd()
 
     while True:
-        # Check if the marker file exists in the current directory
         marker_path = os.path.join(current_dir, marker_file)
         if os.path.isfile(marker_path):
             return current_dir
-
-        # Move up one level in the directory hierarchy
         parent_dir = os.path.dirname(current_dir)
-
-        # Break the loop if we have reached the root directory
         if parent_dir == current_dir:
             break
-
         current_dir = parent_dir
 
     return None
@@ -41,29 +38,32 @@ def setRelativePath(relative_path):
     """
     Set the relative path based on the project root directory.
 
-    :param relative_path: The relative path to set.
+    Args:
+        relative_path(str): The relative path to set.
+
+    Returns:
+        absolute_path(str): The absolute path corresponding to the relative path.
+        If there is no project root, an error will be raised.
     """
-    # Find the project root
     project_root = findProjectRoot()
 
     if project_root is not None:
-        # Combine the project root and the relative path
         absolute_path = os.path.join(project_root, relative_path)
-        # absolute_path = normalize_path(absolute_path)
         return absolute_path
     else:
         raise RuntimeError("Project root not found.")
 
 
-def normalizePath(path):
-    # 将正斜杠替换为反斜杠
-    path = path.replace('/', '\\')
-    # 将连续两个反斜杠替换为一个反斜杠
-    path = re.sub(r'\\\\', r'\\', path)
-    return path
-
-
 def checkAndCreatePath(abs_path):
+    """
+    Check if abs_path exists, if not, create abs path recursively
+
+    Args:
+        abs_path: An absolute path
+
+    Returns:
+        None
+    """
     # 判断路径是否存在
     if not os.path.exists(abs_path):
         # 递归创建路径
@@ -75,6 +75,15 @@ def checkAndCreatePath(abs_path):
 
 
 def hasFilesInPath(path):
+    """
+    Check if path is empty
+
+    Args:
+        path: An absolute path
+
+    Returns:
+        Returns True if it is not empty, otherwise returns False
+    """
     # 使用 os.scandir 检查路径是否包含文件
     return any(entry.is_file() for entry in os.scandir(path))
 
@@ -85,21 +94,28 @@ def getCocoSubsetV1(
         classes: list,
         output_dir: str
 ):
+    """
+    Extract the coco subset containing specified classes based on coco json,
+    and store the subset in output_dir
+
+    Args:
+        coco_json_dir: The parent directory(relative) of the coco json file
+        coco_json_name: The coco json file name
+        classes: the subset of the 80 object categories
+        output_dir: Relative path to store subset
+
+    Returns:
+        None
+    """
     # instantiate COCO specifying the annotations json path
     json_relative_path = coco_json_dir + '/' + coco_json_name
     json_path = setRelativePath(json_relative_path)
     output_path = setRelativePath(output_dir)
     checkAndCreatePath(output_path)
     coco = COCO(json_path)
-
-    # Specify a list of category names of interest
     catIds = coco.getCatIds(catNms=classes)
-
-    # Get the corresponding image ids and images using loadImgs
     imgIds = coco.getImgIds(catIds=catIds)
     images = coco.loadImgs(imgIds)
-
-    # Save the images into a local folder
     if not hasFilesInPath(output_path):
         for im in images:
             img_data = requests.get(im['coco_url']).content
@@ -107,17 +123,30 @@ def getCocoSubsetV1(
             with open(output_file_path, 'wb') as handler:
                 handler.write(img_data)
 
-    return imgIds
-
 
 def getCocoSubsetV2(
         coco_name='coco-2017',
         dataset_dir='dataset/coco-2017',
-        splits=None,
-        classes=None,
-        max_samples=None,
+        splits: list = None,
+        classes: list = None,
+        max_samples: int = None,
         only_matching=True
 ):
+    """
+    Extract the coco subset containing specified classes by fiftyone,
+    and store the subset and json in dataset_dir.
+
+    Args:
+        coco_name: coco-2014 or coco-2017
+        dataset_dir: Relative path to store subset and json
+        splits: specifying the splits to load.Supported values are ("train", "test", "validation").If neither is provided, all available splits are loaded
+        classes: specifying required classes to load.Default is person
+        max_samples: a maximum number of samples to load per split
+        only_matching: whether to only load labels that match the classes or attrs requirements that you provide
+
+    Returns:
+        None
+    """
     dataset_path = setRelativePath(dataset_dir)
     checkAndCreatePath(dataset_path)
     foz.load_zoo_dataset(
@@ -128,6 +157,41 @@ def getCocoSubsetV2(
         max_samples=max_samples,
         dataset_dir=dataset_path
     )
+
+
+def get_category_id(categories_name, json_data):
+    for category in json_data["categories"]:
+        if category["name"] == categories_name:
+            return category["id"]
+    raise ValueError(f"Category '{categories_name}' not found")
+
+
+def filterAnnotation(json_file_path, classes='person'):
+    """
+    In order to improve the speed of cocojson2yolovtxt, filter out the unnecessary parts of coco json in advance
+
+    Args:
+        json_file_path: Absolute path to cocojson file
+        classes: the subset of the 80 object categories
+
+    Returns:
+
+    """
+    json_file_dir = os.path.dirname(json_file_path)
+    with open(json_file_path, "r") as json_file:
+        # Load the JSON data from the file
+        json_data = json.load(json_file)
+    filtered_cat_id = get_category_id(classes, json_data)
+    filtered_annotations = [
+        {key: value for key, value in annotation.items() if key != "segmentation"}
+        for annotation in json_data["annotations"]
+        if annotation["category_id"] == filtered_cat_id
+    ]
+    json_data["annotations"] = filtered_annotations
+
+    with open(json_file_dir + "filtered_labels.json", "w") as json_file:
+        json.dump(json_data, json_file, indent=2)
+    print("Filtered annotations saved")
 
 
 def convertBboxCoco2Yolo(img_width, img_height, bbox):
@@ -198,14 +262,6 @@ def convertCocoJson2YoloTxt(output_path, json_file):
     print("Converting COCO Json to YOLO txt finished!")
 
 
-def filterAnnotation(json_file):
-    filtered_annotations = [annotation for annotation in json_file["annotations"] if annotation["category_id"] == 1]
-    json_file["annotations"] = filtered_annotations
-    with open("filtered_labels.json", "w") as json_file:
-        json.dump(json_file, json_file, indent=2)
-    print("Filtered annotations saved to 'filtered_annotations.json'")
-
-
 def stdDataset(
         dataset_dir='dataset/coco-2017'
 ):
@@ -214,17 +270,21 @@ def stdDataset(
     images_val_path = checkAndCreatePath(setRelativePath(dataset_dir + '/images/val'))
     labels_train_path = checkAndCreatePath(setRelativePath(dataset_dir + '/labels/train'))
     labels_val_path = checkAndCreatePath(setRelativePath(dataset_dir + '/labels/val'))
+    json_path = checkAndCreatePath(setRelativePath(dataset_dir + '/labels'))
     shutil.move(dataset_path + '/train/data/', images_train_path)
     shutil.move(dataset_path + '/validation/data/', images_val_path)
     shutil.move(dataset_path + '/train/labels.json', labels_train_path)
     shutil.move(dataset_path + '/validation/labels.json', labels_val_path)
     shutil.rmtree(dataset_path + '/train')
     shutil.rmtree(dataset_path + '/validation')
-    convertCocoJson2YoloTxt(labels_train_path, labels_train_path + '/labels.json')
-    convertCocoJson2YoloTxt(labels_val_path, labels_val_path + '/labels.json')
+    filterAnnotation(labels_train_path + '/labels.json')
+    filterAnnotation(labels_val_path + '/labels.json')
+    convertCocoJson2YoloTxt(labels_train_path, json_path + '/trainfiltered_labels.json')
+    convertCocoJson2YoloTxt(labels_val_path, json_path + '/valfiltered_labels.json')
 
 
 if __name__ == "__main__":
     # getCocoSubsetV2(splits=['train', 'validation'], classes='person')
     # stdDataset()
+    # filterAnnotation("D:\\my_knowledge\\research_assistant\\yolov5_debug\\custom\\labels.json")
     pass
