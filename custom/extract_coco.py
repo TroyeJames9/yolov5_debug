@@ -136,8 +136,8 @@ def getCocoSubsetV1(
 
 
 def getCocoSubsetV2(
-        coco_name='coco-2017',
-        dataset_dir='dataset/coco-2017',
+        coco_name,
+        dataset_dir,
         splits: list = None,
         classes: list = None,
         max_samples: int = None,
@@ -174,19 +174,24 @@ def get_category_id(categories_name, json_data):
     """
     Return the id corresponding to categories_name based on json_data
     Args:
-        categories_name(str): The subset of the 80 object categories
+        categories_name(list): The subset of the 80 object categories
         json_data(json): Dictionary in json format
 
     Returns:
-        int. The id corresponding to categories_name,If the id cannot be found, raise error
+        list. The ids corresponding to categories_name,If the id cannot be found, raise error
     """
-    for category in json_data["categories"]:
-        if category["name"] == categories_name:
-            return category["id"]
-    raise ValueError(f"Category '{categories_name}' not found")
+    category_id = []
+    for cname in categories_name:
+        for category in json_data["categories"]:
+            if category["name"] == cname:
+                category_id.append(category["id"])
+                break
+        else:
+            raise ValueError(f"Category '{cname}' not found")
+    return category_id
 
 
-def filterAnnotation(json_file_path, classes='person'):
+def filterAnnotation(json_file_path, classes):
     """
     In order to improve the speed of cocojson2yolovtxt, filter out the unnecessary parts of coco json in advance
 
@@ -202,15 +207,16 @@ def filterAnnotation(json_file_path, classes='person'):
     with open(json_file_path, "r") as json_file:
         # Load the JSON data from the file
         json_data = json.load(json_file)
-    filtered_cat_id = get_category_id(classes, json_data)
-    filtered_annotations = [
-        {key: value for key, value in annotation.items() if key != "segmentation"}
-        for annotation in json_data["annotations"]
-        if annotation["category_id"] == filtered_cat_id
-    ]
-    json_data["annotations"] = filtered_annotations
+    if json_data.get('annotations') is not None:
+        filtered_cat_id = get_category_id(classes, json_data)
+        filtered_annotations = [
+            {key: value for key, value in annotation.items() if key != "segmentation"}
+            for annotation in json_data["annotations"]
+            if annotation["category_id"] in filtered_cat_id
+        ]
+        json_data["annotations"] = filtered_annotations
 
-    with open(json_file_dir + "filtered_labels.json", "w") as json_file:
+    with open(json_file_dir + "_labels.json", "w") as json_file:
         json.dump(json_data, json_file, indent=2)
     print("Filtered annotations saved")
 
@@ -246,12 +252,13 @@ def convertBboxCoco2Yolo(img_width: int, img_height: int, bbox: list):
     return [x, y, w, h]
 
 
-def convertCocoJson2YoloTxt(output_path, json_file):
+def convertCocoJson2YoloTxt(output_path, json_file, is_darknet):
     """
     Batch generate txt in yolov format based on cocojson in image units
     Args:
         output_path: Relative path to store yolov txt
         json_file: Absolute path to cocojson file
+        is_darknet: Whether to generate _darkent.labels
 
     Returns:
         None
@@ -259,60 +266,59 @@ def convertCocoJson2YoloTxt(output_path, json_file):
     with open(json_file) as f:
         json_data = json.load(f)
 
-    # write _darknet.labels, which holds names of all classes (one class per line)
-    label_file = os.path.join(output_path, "_darknet.labels")
-    with open(label_file, "w") as f:
-        for category in tqdm(json_data["categories"], desc="Categories"):
-            category_name = category["name"]
-            f.write(f"{category_name}\n")
+    if json_data.get('annotations') is not None:
+        # write _darknet.labels, which holds names of all classes (one class per line)
+        if is_darknet:
+            label_file = os.path.join(output_path, "_darknet.labels")
+            with open(label_file, "w") as f:
+                for category in tqdm(json_data["categories"], desc="Categories"):
+                    category_name = category["name"]
+                    f.write(f"{category_name}\n")
 
-    for image in tqdm(json_data["images"], desc="Annotation txt for each iamge"):
-        img_id = image["id"]
-        img_name = image["file_name"]
-        img_width = image["width"]
-        img_height = image["height"]
+        for image in tqdm(json_data["images"], desc="Annotation txt for each iamge"):
+            img_id = image["id"]
+            img_name = image["file_name"]
+            img_width = image["width"]
+            img_height = image["height"]
 
-        anno_in_image = [anno for anno in json_data["annotations"] if anno["image_id"] == img_id]
-        anno_txt = os.path.join(output_path, img_name.split(".")[0] + ".txt")
-        with open(anno_txt, "w") as f:
-            for anno in anno_in_image:
-                category = anno["category_id"]
-                bbox_COCO = anno["bbox"]
-                x, y, w, h = convertBboxCoco2Yolo(img_width, img_height, bbox_COCO)
-                f.write(f"{category} {x:.6f} {y:.6f} {w:.6f} {h:.6f}\n")
+            anno_in_image = [anno for anno in json_data["annotations"] if anno["image_id"] == img_id]
+            anno_txt = os.path.join(output_path, img_name.split(".")[0] + ".txt")
+            with open(anno_txt, "w") as f:
+                for anno in anno_in_image:
+                    category = anno["category_id"]
+                    bbox_COCO = anno["bbox"]
+                    x, y, w, h = convertBboxCoco2Yolo(img_width, img_height, bbox_COCO)
+                    f.write(f"{category} {x:.6f} {y:.6f} {w:.6f} {h:.6f}\n")
 
-    print("Converting COCO Json to YOLO txt finished!")
+        print("Converting COCO Json to YOLO txt finished!")
 
 
-def stdDataset(
-        dataset_dir='dataset/coco-2017'
-):
+def stdDataset(splits, classes, dataset_dir, is_darknet):
     """
     Standardize the file structure of coco subset and convert cocojson to yolov txt
 
     Args:
+        splits: specifying the splits to load.Supported values are ("train", "test", "validation").
         dataset_dir: Relative path to store coco subset
-
+        classes: the subset of the 80 object categories
+        is_darknet: Whether to generate _darknet.labels
     Returns:
         None
     """
     dataset_path = setRelativePath(dataset_dir)
-    images_train_path = checkAndCreatePath(dataset_path + '/images/train')
-    images_val_path = checkAndCreatePath(dataset_path + '/images/val')
-    labels_train_path = checkAndCreatePath(dataset_path + '/labels/train')
-    labels_val_path = checkAndCreatePath(dataset_path + '/labels/val')
-    json_path = checkAndCreatePath(dataset_path + '/labels')
-    if os.path.exists(dataset_path + '/train'):
-        shutil.move(dataset_path + '/train/data/', images_train_path)
-        shutil.move(dataset_path + '/validation/data/', images_val_path)
-        shutil.move(dataset_path + '/train/labels.json', labels_train_path)
-        shutil.move(dataset_path + '/validation/labels.json', labels_val_path)
-        shutil.rmtree(dataset_path + '/train')
-        shutil.rmtree(dataset_path + '/validation')
-    filterAnnotation(labels_train_path + '/labels.json')
-    filterAnnotation(labels_val_path + '/labels.json')
-    convertCocoJson2YoloTxt(labels_train_path, json_path + '/trainfiltered_labels.json')
-    convertCocoJson2YoloTxt(labels_val_path, json_path + '/valfiltered_labels.json')
+    images_path = {}
+    labels_path = {}
+    json_path = dataset_path + '/labels'
+    for split in splits:
+        images_path[split] = checkAndCreatePath(dataset_path + '/images/' + split)
+        labels_path[split] = checkAndCreatePath(dataset_path + '/labels/' + split)
+        if not os.path.exists(images_path[split] + '/data'):
+            shutil.move(dataset_path + '/' + split + '/data/', images_path[split])
+            shutil.move(dataset_path + '/' + split + '/labels.json', labels_path[split])
+            shutil.rmtree(dataset_path + '/' + split)
+        filterAnnotation(labels_path[split] + '/labels.json', classes=classes)
+        convertCocoJson2YoloTxt(labels_path[split], json_path + '/' + split + '_labels.json', is_darknet=is_darknet)
+        os.remove(labels_path[split] + '/labels.json')
 
 
 def run(
@@ -320,7 +326,8 @@ def run(
         dataset_dir='dataset/coco-2017',
         splits=None,
         classes='person',
-        max_samples=None
+        max_samples=None,
+        is_darknet=False
 ):
     if splits is None:
         splits = ['train', 'validation']
@@ -331,7 +338,7 @@ def run(
         classes=classes,
         max_samples=max_samples
     )
-    stdDataset(dataset_dir)
+    stdDataset(splits=splits, classes=classes, dataset_dir=dataset_dir, is_darknet=is_darknet)
 
 
 def parse_opt():
@@ -344,6 +351,7 @@ def parse_opt():
     parser.add_argument('--classes', nargs='+', type=str, default='person', help='classes to load.')
     parser.add_argument('--max-samples', type=int, default=None,
                         help='samples to load per split.')
+    parser.add_argument('--is-darknet', action='store_true', help='Whether to generate _darkent.labels')
     opt = parser.parse_args()
     print_args(vars(opt))
     return opt
