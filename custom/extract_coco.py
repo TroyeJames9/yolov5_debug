@@ -1,10 +1,21 @@
 import os
+import sys
 import json
 import requests
 import shutil
+import argparse
 import fiftyone.zoo as foz
 from pycocotools.coco import COCO
 from tqdm import tqdm
+from pathlib import Path
+
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[1]  # YOLOv5 root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
+from utils.general import print_args
 
 
 def findProjectRoot(current_dir=None, marker_file=".gitignore"):
@@ -160,6 +171,15 @@ def getCocoSubsetV2(
 
 
 def get_category_id(categories_name, json_data):
+    """
+    Return the id corresponding to categories_name based on json_data
+    Args:
+        categories_name(str): The subset of the 80 object categories
+        json_data(json): Dictionary in json format
+
+    Returns:
+        int. The id corresponding to categories_name,If the id cannot be found, raise error
+    """
     for category in json_data["categories"]:
         if category["name"] == categories_name:
             return category["id"]
@@ -175,6 +195,7 @@ def filterAnnotation(json_file_path, classes='person'):
         classes: the subset of the 80 object categories
 
     Returns:
+        None
 
     """
     json_file_dir = os.path.dirname(json_file_path)
@@ -194,25 +215,17 @@ def filterAnnotation(json_file_path, classes='person'):
     print("Filtered annotations saved")
 
 
-def convertBboxCoco2Yolo(img_width, img_height, bbox):
+def convertBboxCoco2Yolo(img_width: int, img_height: int, bbox: list):
     """
     Convert bounding box from COCO  format to YOLO format
 
-    Parameters
-    ----------
-    img_width : int
-        width of image
-    img_height : int
-        height of image
-    bbox : list[int]
-        bounding box annotation in COCO format:
-        [top left x position, top left y position, width, height]
+    Args:
+        img_width(int) : width of image
+        img_height(int) : height of image
+        bbox(list[int]) : bounding box annotation in COCO format:[top left x position, top left y position, width, height]
 
-    Returns
-    -------
-    list[float]
-        bounding box annotation in YOLO format:
-        [x_center_rel, y_center_rel, width_rel, height_rel]
+    Returns:
+        list[float].bounding box annotation in YOLO format:[x_center_rel, y_center_rel, width_rel, height_rel]
     """
 
     # YOLO bounding box format: [x_center, y_center, width, height]
@@ -234,6 +247,15 @@ def convertBboxCoco2Yolo(img_width, img_height, bbox):
 
 
 def convertCocoJson2YoloTxt(output_path, json_file):
+    """
+    Batch generate txt in yolov format based on cocojson in image units
+    Args:
+        output_path: Relative path to store yolov txt
+        json_file: Absolute path to cocojson file
+
+    Returns:
+        None
+    """
     with open(json_file) as f:
         json_data = json.load(f)
 
@@ -265,26 +287,73 @@ def convertCocoJson2YoloTxt(output_path, json_file):
 def stdDataset(
         dataset_dir='dataset/coco-2017'
 ):
+    """
+    Standardize the file structure of coco subset and convert cocojson to yolov txt
+
+    Args:
+        dataset_dir: Relative path to store coco subset
+
+    Returns:
+        None
+    """
     dataset_path = setRelativePath(dataset_dir)
-    images_train_path = checkAndCreatePath(setRelativePath(dataset_dir + '/images/train'))
-    images_val_path = checkAndCreatePath(setRelativePath(dataset_dir + '/images/val'))
-    labels_train_path = checkAndCreatePath(setRelativePath(dataset_dir + '/labels/train'))
-    labels_val_path = checkAndCreatePath(setRelativePath(dataset_dir + '/labels/val'))
-    json_path = checkAndCreatePath(setRelativePath(dataset_dir + '/labels'))
-    shutil.move(dataset_path + '/train/data/', images_train_path)
-    shutil.move(dataset_path + '/validation/data/', images_val_path)
-    shutil.move(dataset_path + '/train/labels.json', labels_train_path)
-    shutil.move(dataset_path + '/validation/labels.json', labels_val_path)
-    shutil.rmtree(dataset_path + '/train')
-    shutil.rmtree(dataset_path + '/validation')
+    images_train_path = checkAndCreatePath(dataset_path + '/images/train')
+    images_val_path = checkAndCreatePath(dataset_path + '/images/val')
+    labels_train_path = checkAndCreatePath(dataset_path + '/labels/train')
+    labels_val_path = checkAndCreatePath(dataset_path + '/labels/val')
+    json_path = checkAndCreatePath(dataset_path + '/labels')
+    if os.path.exists(dataset_path + '/train'):
+        shutil.move(dataset_path + '/train/data/', images_train_path)
+        shutil.move(dataset_path + '/validation/data/', images_val_path)
+        shutil.move(dataset_path + '/train/labels.json', labels_train_path)
+        shutil.move(dataset_path + '/validation/labels.json', labels_val_path)
+        shutil.rmtree(dataset_path + '/train')
+        shutil.rmtree(dataset_path + '/validation')
     filterAnnotation(labels_train_path + '/labels.json')
     filterAnnotation(labels_val_path + '/labels.json')
     convertCocoJson2YoloTxt(labels_train_path, json_path + '/trainfiltered_labels.json')
     convertCocoJson2YoloTxt(labels_val_path, json_path + '/valfiltered_labels.json')
 
 
+def run(
+        coco_name='coco-2017',
+        dataset_dir='dataset/coco-2017',
+        splits=None,
+        classes='person',
+        max_samples=None
+):
+    if splits is None:
+        splits = ['train', 'validation']
+    getCocoSubsetV2(
+        coco_name,
+        dataset_dir=dataset_dir,
+        splits=splits,
+        classes=classes,
+        max_samples=max_samples
+    )
+    stdDataset(dataset_dir)
+
+
+def parse_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--coco-name', type=str, default='coco-2017',
+                        help='The value is coco-2014 or coco-2017')
+    parser.add_argument('--dataset-dir', type=str, default='dataset/coco-2017',
+                        help='Relative path to store coco subset result')
+    parser.add_argument('--splits', nargs='+', type=str, default=None, help='the splits to load.')
+    parser.add_argument('--classes', nargs='+', type=str, default='person', help='classes to load.')
+    parser.add_argument('--max-samples', type=int, default=None,
+                        help='samples to load per split.')
+    opt = parser.parse_args()
+    print_args(vars(opt))
+    return opt
+
+
+def main(opt):
+    run(**vars(opt))
+
+
 if __name__ == "__main__":
-    # getCocoSubsetV2(splits=['train', 'validation'], classes='person')
-    # stdDataset()
-    # filterAnnotation("D:\\my_knowledge\\research_assistant\\yolov5_debug\\custom\\labels.json")
-    pass
+    opt = parse_opt()
+    print(opt)
+    main(opt)
