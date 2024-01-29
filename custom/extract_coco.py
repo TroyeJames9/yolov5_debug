@@ -344,14 +344,14 @@ def run(
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--coco-name', type=str, default='coco-2017',
-                        help='The value is coco-2014 or coco-2017')
+                        help='The value is coco-2014 or coco-2017,default is coco-2017')
     parser.add_argument('--dataset-dir', type=str, default='dataset/coco-2017',
-                        help='Relative path to store coco subset result')
-    parser.add_argument('--splits', nargs='+', type=str, default=None, help='the splits to load.')
-    parser.add_argument('--classes', nargs='+', type=str, default='person', help='classes to load.')
+                        help='Relative path to store coco subset result, default is dataset/coco-2017')
+    parser.add_argument('--splits', nargs='+', type=str, default=None, help='the splits to load.default is None')
+    parser.add_argument('--classes', nargs='+', type=str, default=['person'], help='classes to load.default is person')
     parser.add_argument('--max-samples', type=int, default=None,
-                        help='samples to load per split.')
-    parser.add_argument('--is-darknet', action='store_true', help='Whether to generate _darkent.labels')
+                        help='samples to load per split.default is None')
+    parser.add_argument('--is-darknet', action='store_true', help='Whether to generate _darkent.labels.')
     opt = parser.parse_args()
     print_args(vars(opt))
     return opt
