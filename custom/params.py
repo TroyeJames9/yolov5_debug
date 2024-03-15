@@ -11,7 +11,7 @@ train_params = {
     "train_script": str(PROJECT_ROOT / "train.py"),
     "weights": str(WEIGHTS / "weights"),
     "cfg": str(MODELS / "yolov5s.yaml"),
-    "data": str(DATA / "test.yaml"),
+    "data": str(DATA / "coco128.yaml"),
     "epochs": 5,
     "batch_size": 16,
 }
