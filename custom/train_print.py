@@ -7,6 +7,7 @@
 - 使用subprocess.run()方法执行构建好的命令行命令，启动训练过程
 - 读取存储训练结果数据的CSV文件
 - 将训练过程中的性能指标变化趋势绘制成图
+- 训练结果保存在runs/train
 
 作者: opdog
 创建日期: 2024/3/15
@@ -28,11 +29,12 @@ def train(config):
                                 - weights:   # str: 预训练权重文件路径
                                 - cfg:   # str: 模型配置文件路径
                                 - data:   # str: 数据集路径
+
                                 - epochs:   # int: 训练轮数
                                 - batch_size:   # int: 批次大小
 
         返回：
-        - 命令行参数
+        - 运行参数指定的命令，启动train.py文件进行训练，将训练结果保存在runs/train
         """
     command = [
         "python", config['train_script'],
